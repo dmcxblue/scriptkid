@@ -17,6 +17,56 @@ var AGENT = {
     jobs: {}
 };
 
+// JScript (WSH) has no JSON global. Minimal inline polyfill.
+if (typeof JSON === "undefined") { JSON = {}; }
+if (typeof JSON.stringify !== "function") {
+    JSON.stringify = (function () {
+        function esc(s) {
+            return s.replace(/[\\"\x00-\x1f]/g, function (c) {
+                if (c === "\\") return "\\\\";
+                if (c === "\"") return "\\\"";
+                if (c === "\n") return "\\n";
+                if (c === "\r") return "\\r";
+                if (c === "\t") return "\\t";
+                if (c === "\b") return "\\b";
+                if (c === "\f") return "\\f";
+                var h = c.charCodeAt(0).toString(16);
+                while (h.length < 4) h = "0" + h;
+                return "\\u" + h;
+            });
+        }
+        function enc(v) {
+            if (v === null || v === undefined) return "null";
+            var t = typeof v;
+            if (t === "string") return "\"" + esc(v) + "\"";
+            if (t === "number") return isFinite(v) ? String(v) : "null";
+            if (t === "boolean") return v ? "true" : "false";
+            if (v && typeof v.length === "number" && typeof v.push === "function") {
+                var out = [];
+                for (var i = 0; i < v.length; i++) out.push(enc(v[i]));
+                return "[" + out.join(",") + "]";
+            }
+            if (t === "object") {
+                var parts = [];
+                for (var k in v) {
+                    if (!v.hasOwnProperty || v.hasOwnProperty(k)) {
+                        var vv = v[k];
+                        if (typeof vv !== "function" && typeof vv !== "undefined") {
+                            parts.push("\"" + esc(k) + "\":" + enc(vv));
+                        }
+                    }
+                }
+                return "{" + parts.join(",") + "}";
+            }
+            return "null";
+        }
+        return enc;
+    })();
+}
+if (typeof JSON.parse !== "function") {
+    JSON.parse = function (s) { return eval("(" + s + ")"); };
+}
+
 function sleepMs(ms) { WScript.Sleep(ms); }
 function nextSleep() {
     var base = AGENT.callback_interval * 1000;
