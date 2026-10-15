@@ -91,6 +91,7 @@ class Scriptkid(PayloadType):
                     profile_cfg.get("callback_interval", "10")
                 ),
                 "__CALLBACK_JITTER__": self.get_parameter("callback_jitter"),
+                "__QUERY_PATH_NAME__": profile_cfg.get("query_path_name", ""),
                 "__PROFILE_HEADERS__": json.dumps(
                     profile_cfg.get("headers", {})
                 ),
