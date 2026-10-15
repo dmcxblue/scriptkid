@@ -7,7 +7,8 @@ class ExitArguments(TaskArguments):
         self.args = []
 
     async def parse_arguments(self):
-        pass
+        if len(self.command_line) > 0:
+            raise Exception("exit takes no arguments")
 
 
 class ExitCommand(CommandBase):
@@ -16,11 +17,15 @@ class ExitCommand(CommandBase):
     help_cmd = "exit"
     description = "Instruct the agent to clean up and terminate its callback."
     version = 1
-    is_exit = True
     author = "@dmcxblue"
     argument_class = ExitArguments
     attackmapping = []
-    attributes = CommandAttributes(supported_os=[SupportedOS.Windows])
+    supported_ui_features = ["callback_table:exit"]
+    attributes = CommandAttributes(
+        builtin=True,
+        suggested_command=True,
+        supported_os=[SupportedOS.Windows],
+    )
 
     async def create_tasking(self, task: MythicTask) -> MythicTask:
         return task
