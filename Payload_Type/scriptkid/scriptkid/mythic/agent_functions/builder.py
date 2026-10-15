@@ -40,7 +40,7 @@ class Scriptkid(PayloadType):
     ]
 
     agent_path = pathlib.Path(".") / "scriptkid" / "mythic"
-    agent_icon_path = agent_path / "scriptkid.svg"
+    agent_icon_path = agent_path / "agent_functions" / "scriptkid.svg"
     agent_code_path = pathlib.Path(".") / "scriptkid" / "agent_code"
 
     build_steps = [
