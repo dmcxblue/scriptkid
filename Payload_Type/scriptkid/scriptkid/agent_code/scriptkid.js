@@ -21,6 +21,10 @@ var AGENT = {
 // docs/minimal-agent-feature-set.md as each lands.
 var HANDLERS = {
     "help": function (task) { throw new Error("TODO: help"); },
+    "exit": function (task) {
+        try { WScript.Quit(0); } catch (e) { /* host without WScript */ }
+        return { user_output: "exiting", completed: true };
+    },
     "pwd":  function (task) { throw new Error("TODO: pwd"); },
     "ls":   function (task) { throw new Error("TODO: ls"); },
     "mkdir":function (task) { throw new Error("TODO: mkdir"); },

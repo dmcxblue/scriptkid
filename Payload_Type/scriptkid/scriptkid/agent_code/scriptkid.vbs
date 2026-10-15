@@ -20,6 +20,7 @@ Dim AGENT_JITTER   : AGENT_JITTER   = CInt("__CALLBACK_JITTER__")
 Function Dispatch(cmd, task)
     Select Case LCase(cmd)
         Case "help"          : Err.Raise 5, , "TODO: help"
+        Case "exit"          : WScript.Quit 0
         Case "pwd"           : Err.Raise 5, , "TODO: pwd"
         Case "ls"            : Err.Raise 5, , "TODO: ls"
         Case "mkdir"         : Err.Raise 5, , "TODO: mkdir"
