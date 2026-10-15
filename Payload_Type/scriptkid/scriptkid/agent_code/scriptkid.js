@@ -295,7 +295,6 @@ var HANDLERS = {
         node.dataType = "bin.base64";
         node.nodeTypedValue = bytes;
         var encoded = node.text.replace(/\r?\n/g, "");
-        var encoded = b64encode(raw);
         var chunkSize = 512000;
         var totalChunks = Math.ceil(encoded.length / chunkSize) || 1;
         var resp = postMessage({
