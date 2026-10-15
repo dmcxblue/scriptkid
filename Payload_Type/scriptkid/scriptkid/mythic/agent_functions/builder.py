@@ -13,7 +13,7 @@ class Scriptkid(PayloadType):
     supported_os = [SupportedOS.Windows]
     wrapper = False
     wrapped_payloads = []
-    mythic_encrypts = True
+    mythic_encrypts = False
     note = (
         "Minimal Windows-only Mythic agent in JScript or VBScript "
         "(COM-only; no in-process native-code loading). Scope is tracked in "
