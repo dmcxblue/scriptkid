@@ -15,7 +15,9 @@ class LsArguments(TaskArguments):
         ]
 
     async def parse_arguments(self):
-        if self.command_line.strip():
+        if self.command_line and self.command_line[0] == "{":
+            self.load_args_from_json_string(self.command_line)
+        elif self.command_line.strip():
             self.add_arg("path", self.command_line.strip())
 
 

@@ -20,11 +20,14 @@ class MvArguments(TaskArguments):
         ]
 
     async def parse_arguments(self):
-        parts = self.command_line.strip().split(maxsplit=1)
-        if len(parts) != 2:
-            raise Exception("mv requires exactly two arguments: <source> <dest>")
-        self.add_arg("source", parts[0])
-        self.add_arg("dest", parts[1])
+        if self.command_line and self.command_line[0] == "{":
+            self.load_args_from_json_string(self.command_line)
+        else:
+            parts = self.command_line.strip().split(maxsplit=1)
+            if len(parts) != 2:
+                raise Exception("mv requires exactly two arguments: <source> <dest>")
+            self.add_arg("source", parts[0])
+            self.add_arg("dest", parts[1])
 
 
 class MvCommand(CommandBase):

@@ -14,7 +14,10 @@ class KillArguments(TaskArguments):
         ]
 
     async def parse_arguments(self):
-        self.add_arg("pid", int(self.command_line.strip()))
+        if self.command_line and self.command_line[0] == "{":
+            self.load_args_from_json_string(self.command_line)
+        else:
+            self.add_arg("pid", int(self.command_line.strip()))
 
 
 class KillCommand(CommandBase):

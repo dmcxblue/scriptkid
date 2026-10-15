@@ -81,6 +81,10 @@ class Scriptkid(PayloadType):
                 profile_cfg = p.get_parameters_dict()
                 break
 
+            headers_json = json.dumps(profile_cfg.get("headers", {}))
+            if language == "vbscript":
+                headers_json = headers_json.replace('"', '""')
+
             substitutions = {
                 "__UUID__": self.uuid,
                 "__CALLBACK_HOST__": profile_cfg.get("callback_host", ""),
@@ -92,9 +96,7 @@ class Scriptkid(PayloadType):
                 ),
                 "__CALLBACK_JITTER__": self.get_parameter("callback_jitter"),
                 "__QUERY_PATH_NAME__": profile_cfg.get("query_path_name", ""),
-                "__PROFILE_HEADERS__": json.dumps(
-                    profile_cfg.get("headers", {})
-                ),
+                "__PROFILE_HEADERS__": headers_json,
             }
             for key, value in substitutions.items():
                 source = source.replace(key, value)

